@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexus NAS Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; height: 100vh; display: flex; }
+
+  /* Sidebar */
+  #sidebar { width: 220px; background: #1a1d2e; border-right: 1px solid #2d3148; overflow-y: auto; flex-shrink: 0; }
+  #sidebar h1 { padding: 20px 16px 12px; font-size: 18px; color: #7c3aed; letter-spacing: 1px; border-bottom: 1px solid #2d3148; }
+  .nav-btn { display: block; width: 100%; padding: 12px 16px; background: none; border: none; color: #94a3b8; text-align: left; cursor: pointer; font-size: 14px; transition: all 0.15s; border-left: 3px solid transparent; }
+  .nav-btn:hover { background: #252840; color: #e2e8f0; }
+  .nav-btn.active { background: #1e2035; color: #a78bfa; border-left-color: #7c3aed; }
+  #sidebar .logout-btn { margin-top: 20px; color: #ef4444; border-top: 1px solid #2d3148; }
+  #sidebar .logout-btn:hover { background: #2d1618; }
+
+  /* Main */
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #header { padding: 16px 24px; background: #1a1d2e; border-bottom: 1px solid #2d3148; display: flex; justify-content: space-between; align-items: center; }
+  #header .header-left { flex: 1; }
+  #header h2 { font-size: 16px; color: #a78bfa; }
+  #header .desc { font-size: 13px; color: #64748b; margin-top: 4px; }
+  #header .logout-link { padding: 8px 16px; background: #252840; border: 1px solid #374151; border-radius: 6px; color: #ef4444; text-decoration: none; font-size: 13px; transition: all 0.15s; }
+  #header .logout-link:hover { background: #2d1618; border-color: #ef4444; }
+
+  #content { flex: 1; display: flex; overflow: hidden; }
+
+  /* Dashboard */
+  #dashboard { flex: 1; padding: 24px; overflow-y: auto; display: none; }
+  #dashboard.active { display: block; }
+  .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+  .card { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 12px; padding: 20px; }
+  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .card-title { font-size: 16px; font-weight: 600; color: #a78bfa; }
+  .refresh-btn { padding: 6px 12px; background: #252840; border: 1px solid #374151; border-radius: 6px; color: #94a3b8; cursor: pointer; font-size: 12px; transition: all 0.15s; }
+  .refresh-btn:hover { background: #2d3148; color: #e2e8f0; }
+  .card-body { font-size: 13px; }
+  .card-table { width: 100%; border-collapse: collapse; }
+  .card-table th { text-align: left; padding: 8px; border-bottom: 1px solid #2d3148; color: #64748b; font-weight: 500; font-size: 12px; }
+  .card-table td { padding: 8px; border-bottom: 1px solid #1e2235; color: #e2e8f0; }
+  .card-table tr:last-child td { border-bottom: none; }
+  .empty { color: #475569; font-style: italic; padding: 20px; text-align: center; }
+  .error { color: #f87171; padding: 12px; background: #2d1618; border-radius: 6px; margin-top: 8px; }
+
+  /* Users View */
+  #users-view { flex: 1; padding: 24px; overflow-y: auto; display: none; }
+  #users-view.active { display: block; }
+
+  /* Pools/Blocks/Volumes Views */
+  #pools-view, #blocks-view, #volumes-view { flex: 1; padding: 24px; overflow-y: auto; display: none; }
+  #pools-view.active, #blocks-view.active, #volumes-view.active { display: block; }
+  .user-form { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+  .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .form-field label { display: block; font-size: 12px; color: #64748b; margin-bottom: 6px; }
+  .form-field input { width: 100%; padding: 8px 12px; background: #0f1117; border: 1px solid #374151; border-radius: 5px; color: #e2e8f0; font-size: 13px; }
+  .form-field input:focus { outline: none; border-color: #7c3aed; }
+  .form-submit { padding: 8px 16px; background: #7c3aed; border: none; border-radius: 5px; color: white; font-size: 13px; cursor: pointer; font-weight: 600; }
+  .form-submit:hover { background: #6d28d9; }
+  .action-btn { padding: 4px 10px; background: #252840; border: 1px solid #374151; border-radius: 4px; color: #94a3b8; cursor: pointer; font-size: 11px; margin-right: 4px; }
+  .action-btn:hover { background: #2d3148; color: #e2e8f0; }
+  .action-btn.danger { color: #ef4444; border-color: #7f1d1d; }
+  .action-btn.danger:hover { background: #2d1618; border-color: #ef4444; }
+  .passwd-row { display: none; }
+  .passwd-row.show { display: table-row; }
+  .passwd-form { display: flex; gap: 8px; align-items: center; }
+
+  /* Service View */
+  #service-view { flex: 1; display: none; }
+  #service-view.active { display: flex; }
+  #commands { width: 340px; padding: 16px; overflow-y: auto; border-right: 1px solid #2d3148; background: #131520; }
+  #commands h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #475569; margin-bottom: 12px; }
+  .cmd-card { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 8px; padding: 14px; margin-bottom: 10px; }
+  .cmd-name { font-size: 14px; font-weight: 600; color: #7c3aed; margin-bottom: 4px; }
+  .cmd-desc { font-size: 12px; color: #64748b; margin-bottom: 10px; }
+  .cmd-card input { width: 100%; padding: 7px 10px; background: #0f1117; border: 1px solid #374151; border-radius: 5px; color: #e2e8f0; font-size: 13px; margin-bottom: 6px; outline: none; }
+  .cmd-card input:focus { border-color: #7c3aed; }
+  .cmd-card input::placeholder { color: #475569; }
+  .run-btn { width: 100%; padding: 7px; background: #7c3aed; border: none; border-radius: 5px; color: white; font-size: 13px; cursor: pointer; transition: background 0.15s; }
+  .run-btn:hover { background: #6d28d9; }
+  .run-btn:active { background: #5b21b6; }
+  .wizard-btn { width: 100%; padding: 10px; background: #7c3aed; border: none; border-radius: 8px; color: white; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s; margin-bottom: 16px; }
+  .wizard-btn:hover { background: #6d28d9; }
+
+  #output-pane { flex: 1; display: flex; flex-direction: column; padding: 16px; }
+  #output-pane h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #475569; margin-bottom: 10px; display: flex; justify-content: space-between; }
+  #output-pane h3 button { background: none; border: 1px solid #374151; color: #64748b; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+  #output-pane h3 button:hover { color: #e2e8f0; border-color: #64748b; }
+  #output { flex: 1; background: #0a0c12; border: 1px solid #1e2235; border-radius: 8px; padding: 14px; font-family: 'Cascadia Code', 'JetBrains Mono', monospace; font-size: 13px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #a0aec0; }
+  .out-line { margin-bottom: 2px; }
+  .out-cmd { color: #7c3aed; }
+  .out-ok { color: #34d399; }
+  .out-err { color: #f87171; }
+
+  /* Wizard Modal */
+  #wizard-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+  #wizard-modal.active { display: flex; }
+  .wizard-content { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 12px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; padding: 24px; }
+  .wizard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .wizard-title { font-size: 18px; font-weight: 600; color: #a78bfa; }
+  .close-btn { background: none; border: none; color: #64748b; font-size: 24px; cursor: pointer; }
+  .close-btn:hover { color: #e2e8f0; }
+  .wizard-step { display: none; }
+  .wizard-step.active { display: block; }
+  .step-title { font-size: 16px; color: #e2e8f0; margin-bottom: 16px; }
+  .disk-item { background: #252840; border: 1px solid #374151; border-radius: 6px; padding: 12px; margin-bottom: 8px; display: flex; align-items: center; cursor: pointer; transition: all 0.15s; }
+  .disk-item:hover { background: #2d3148; }
+  .disk-item input[type="checkbox"] { margin-right: 12px; width: 18px; height: 18px; cursor: pointer; }
+  .disk-info { flex: 1; }
+  .disk-name { font-size: 14px; color: #e2e8f0; font-weight: 500; }
+  .disk-size { font-size: 12px; color: #64748b; }
+  .raid-option { background: #252840; border: 1px solid #374151; border-radius: 6px; padding: 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.15s; }
+  .raid-option:hover { background: #2d3148; border-color: #7c3aed; }
+  .raid-option.selected { background: #1e2035; border-color: #7c3aed; }
+  .raid-title { font-size: 14px; color: #e2e8f0; font-weight: 500; margin-bottom: 4px; }
+  .raid-desc { font-size: 12px; color: #64748b; }
+  .wizard-input { width: 100%; padding: 10px; background: #0f1117; border: 1px solid #374151; border-radius: 6px; color: #e2e8f0; font-size: 14px; outline: none; }
+  .wizard-input:focus { border-color: #7c3aed; }
+  .wizard-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .wizard-btn-secondary { flex: 1; padding: 10px; background: #252840; border: 1px solid #374151; border-radius: 6px; color: #e2e8f0; cursor: pointer; }
+  .wizard-btn-secondary:hover { background: #2d3148; }
+  .wizard-btn-primary { flex: 1; padding: 10px; background: #7c3aed; border: none; border-radius: 6px; color: white; font-weight: 600; cursor: pointer; }
+  .wizard-btn-primary:hover { background: #6d28d9; }
+
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #374151; border-top-color: #7c3aed; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 768px) {
+    body { flex-direction: column; }
+    #sidebar { width: 100%; border-right: none; border-bottom: 1px solid #2d3148; }
+    #commands { width: 100%; border-right: none; border-bottom: 1px solid #2d3148; }
+    #content { flex-direction: column; }
+    .dashboard-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>⚡ Nexus</h1>
+  <button class="nav-btn active" onclick="showDashboard()">Dashboard</button>
+  <button class="nav-btn" onclick="showPoolsView()">Pools</button>
+  <button class="nav-btn" onclick="showBlocksView()">Blocks</button>
+  <button class="nav-btn" onclick="showVolumesView()">Volumes</button>
+  <div id="service-list"></div>
+  <button class="nav-btn" onclick="showUsers()">Users</button>
+</div>
+
+<div id="main">
+  <div id="header">
+    <div class="header-left">
+      <h2 id="page-title">Dashboard</h2>
+      <div class="desc" id="page-desc">System Overview</div>
+    </div>
+    <a href="/logout" class="logout-link">Logout</a>
+  </div>
+
+  <div id="content">
+    <!-- Dashboard View -->
+    <div id="dashboard" class="active">
+      <div class="dashboard-grid">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Block Devices</div>
+            <button class="refresh-btn" onclick="loadBlockDevices()">↻ Refresh</button>
+          </div>
+          <div class="card-body">
+            <table class="card-table" id="block-table">
+              <thead><tr><th>Device</th><th>Size</th><th>Type</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Storage Pools</div>
+            <button class="refresh-btn" onclick="loadPools()">↻ Refresh</button>
+          </div>
+          <div class="card-body">
+            <table class="card-table" id="pool-table">
+              <thead><tr><th>Name</th><th>Status</th><th>Capacity</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Volumes</div>
+            <button class="refresh-btn" onclick="loadVolumes()">↻ Refresh</button>
+          </div>
+          <div class="card-body">
+            <table class="card-table" id="volume-table">
+              <thead><tr><th>Name</th><th>Size</th><th>Pool</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Network</div>
+            <button class="refresh-btn" onclick="loadNetwork()">↻ Refresh</button>
+          </div>
+          <div class="card-body">
+            <table class="card-table" id="network-table">
+              <thead><tr><th>Interface</th><th>Status</th><th>Address</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Service View -->
+    <div id="service-view">
+      <div id="commands"></div>
+      <div id="output-pane">
+        <h3>Output <button onclick="clearOutput()">Clear</button></h3>
+        <div id="output"></div>
+      </div>
+    </div>
+
+    <!-- Users View -->
+    <div id="users-view">
+      <div class="user-form">
+        <h3 style="color: #a78bfa; margin-bottom: 16px;">Add New User</h3>
+        <form id="add-user-form" onsubmit="addUser(event)">
+          <div class="form-row">
+            <div class="form-field">
+              <label>Username</label>
+              <input type="text" name="username" required>
+            </div>
+            <div class="form-field">
+              <label>Password</label>
+              <input type="password" name="password" required>
+            </div>
+            <div class="form-field">
+              <label>Display Name</label>
+              <input type="text" name="comment">
+            </div>
+          </div>
+          <button type="submit" class="form-submit">Add User</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">System Users</div>
+          <button class="refresh-btn" onclick="loadUsers()">↻ Refresh</button>
+        </div>
+        <div class="card-body">
+          <table class="card-table" id="users-table">
+            <thead><tr><th>Username</th><th>UID</th><th>Comment</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pools View -->
+    <div id="pools-view">
+      <div style="margin-bottom: 16px;">
+        <button class="form-submit" onclick="openWizard()">+ Create Pool</button>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Storage Pools</div>
+          <button class="refresh-btn" onclick="loadPoolsTable()">↻ Refresh</button>
+        </div>
+        <div class="card-body">
+          <table class="card-table" id="pools-table">
+            <thead><tr><th>Name</th><th>Status/Health</th><th>Capacity</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Blocks View -->
+    <div id="blocks-view">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Block Devices</div>
+          <button class="refresh-btn" onclick="loadBlocksTable()">↻ Refresh</button>
+        </div>
+        <div class="card-body">
+          <table class="card-table" id="blocks-table">
+            <thead><tr><th>Device</th><th>Size</th><th>Type</th><th>Model</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Volumes View -->
+    <div id="volumes-view">
+      <div style="margin-bottom: 16px;">
+        <button class="form-submit" onclick="openVolumeModal()">+ Create Volume</button>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Volumes</div>
+          <button class="refresh-btn" onclick="loadVolumesTable()">↻ Refresh</button>
+        </div>
+        <div class="card-body">
+          <table class="card-table" id="volumes-table">
+            <thead><tr><th>Name</th><th>Used/Size</th><th>Available</th><th>Mountpoint</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Pool Wizard -->
+<div id="wizard-modal">
+  <div class="wizard-content">
+    <div class="wizard-header">
+      <div class="wizard-title">Create Storage Pool</div>
+      <button class="close-btn" onclick="closeWizard()">&times;</button>
+    </div>
+
+    <div id="wizard-step-1" class="wizard-step active">
+      <div class="step-title">Step 1: Select Disks</div>
+      <div id="disk-list"></div>
+      <div class="wizard-actions">
+        <button class="wizard-btn-secondary" onclick="closeWizard()">Cancel</button>
+        <button class="wizard-btn-primary" onclick="wizardNext(2)">Next →</button>
+      </div>
+    </div>
+
+    <div id="wizard-step-2" class="wizard-step">
+      <div class="step-title">Step 2: Choose RAID Type</div>
+      <div class="raid-option" data-raid="stripe" onclick="selectRaid('stripe')">
+        <div class="raid-title">Stripe (RAID 0)</div>
+        <div class="raid-desc">Maximum capacity and performance, no redundancy</div>
+      </div>
+      <div class="raid-option" data-raid="mirror" onclick="selectRaid('mirror')">
+        <div class="raid-title">Mirror (RAID 1)</div>
+        <div class="raid-desc">Full data redundancy, 50% usable capacity</div>
+      </div>
+      <div class="raid-option" data-raid="raidz" onclick="selectRaid('raidz')">
+        <div class="raid-title">RAID-Z</div>
+        <div class="raid-desc">Single parity, can survive one disk failure</div>
+      </div>
+      <div class="wizard-actions">
+        <button class="wizard-btn-secondary" onclick="wizardPrev(1)">← Back</button>
+        <button class="wizard-btn-primary" onclick="wizardNext(3)">Next →</button>
+      </div>
+    </div>
+
+    <div id="wizard-step-3" class="wizard-step">
+      <div class="step-title">Step 3: Enter Pool Name</div>
+      <input type="text" id="pool-name-input" class="wizard-input" placeholder="Enter pool name (e.g., storage1)" />
+      <div class="wizard-actions">
+        <button class="wizard-btn-secondary" onclick="wizardPrev(2)">← Back</button>
+        <button class="wizard-btn-primary" onclick="createPool()">Create Pool</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Volume Modal -->
+<div id="volume-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
+  <div class="wizard-content">
+    <div class="wizard-header">
+      <div class="wizard-title">Create Volume</div>
+      <button class="close-btn" onclick="closeVolumeModal()">&times;</button>
+    </div>
+    <div>
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 6px;">Volume Name</label>
+        <input type="text" id="volume-name-input" class="wizard-input" placeholder="Enter volume name" />
+      </div>
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 6px;">Select Pool</label>
+        <select id="volume-pool-select" class="wizard-input" style="cursor: pointer;">
+          <option value="">-- Select a pool --</option>
+        </select>
+      </div>
+      <div class="wizard-actions">
+        <button class="wizard-btn-secondary" onclick="closeVolumeModal()">Cancel</button>
+        <button class="wizard-btn-primary" onclick="createVolume()">Create Volume</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let services = [];
+let currentService = null;
+let wizardData = { disks: [], raid: '', name: '' };
+
+// Load services on startup
+async function loadServices() {
+  try {
+    const r = await fetch('/api/services');
+    const d = await r.json();
+    services = d.services || [];
+    renderServiceNav();
+  } catch(e) {
+    console.error('Failed to load services:', e);
+  }
+}
+
+function renderServiceNav() {
+  const el = document.getElementById('service-list');
+  el.innerHTML = services.map(s =>
+    `<button class="nav-btn" onclick="showService('${s.name}')">${s.name}</button>`
+  ).join('');
+}
+
+function showDashboard() {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.nav-btn').classList.add('active');
+  document.getElementById('page-title').textContent = 'Dashboard';
+  document.getElementById('page-desc').textContent = 'System Overview';
+  document.getElementById('dashboard').classList.add('active');
+  document.getElementById('service-view').classList.remove('active');
+  document.getElementById('users-view').classList.remove('active');
+
+  // Load dashboard data
+  loadBlockDevices();
+  loadPools();
+  loadVolumes();
+  loadNetwork();
+}
+
+function showUsers() {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('page-title').textContent = 'User Management';
+  document.getElementById('page-desc').textContent = 'Manage system users';
+  document.getElementById('dashboard').classList.remove('active');
+  document.getElementById('service-view').classList.remove('active');
+  document.getElementById('users-view').classList.add('active');
+
+  loadUsers();
+}
+
+function showService(name) {
+  currentService = services.find(s => s.name === name);
+  if (!currentService) return;
+
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+
+  document.getElementById('page-title').textContent = name;
+  document.getElementById('page-desc').textContent = currentService.description || '';
+  document.getElementById('dashboard').classList.remove('active');
+  document.getElementById('service-view').classList.add('active');
+  document.getElementById('users-view').classList.remove('active');
+
+  renderCommands();
+}
+
+function renderCommands() {
+  const el = document.getElementById('commands');
+  let html = '<h3>Commands</h3>';
+
+  // Add Create Pool wizard for pool service
+  if (currentService.name === 'pool') {
+    html += '<button class="wizard-btn" onclick="openWizard()">+ Create Pool</button>';
+  }
+
+  html += currentService.commands.map(c => {
+    const inputs = c.args.map(a =>
+      `<input id="arg_${currentService.name}_${c.name}_${a.name}" placeholder="${a.hint || a.name}" title="${a.description || ''}">`
+    ).join('');
+    return `<div class="cmd-card">
+      <div class="cmd-name">${c.name}</div>
+      <div class="cmd-desc">${c.description || ''}</div>
+      ${inputs}
+      <button class="run-btn" onclick="runCmd('${currentService.name}','${c.name}',${JSON.stringify(c.args.map(a=>a.name))})">▶ Run</button>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = html;
+}
+
+async function runCmd(svc, cmd, argNames) {
+  const args = argNames.map(n => {
+    const el = document.getElementById(`arg_${svc}_${cmd}_${n}`);
+    return el ? el.value : '';
+  });
+
+  const out = document.getElementById('output');
+  const spinner = `<span class="spinner"></span>`;
+  out.innerHTML += `<div class="out-line out-cmd">${spinner}$ ${svc}.${cmd} ${args.join(' ')}</div>`;
+  out.scrollTop = out.scrollHeight;
+
+  try {
+    const r = await fetch('/api/execute', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({service: svc, command: cmd, args})
+    });
+    const d = await r.json();
+    out.lastElementChild.innerHTML = `$ ${svc}.${cmd} ${args.join(' ')}`;
+    const cls = d.success ? 'out-ok' : 'out-err';
+    out.innerHTML += `<div class="out-line ${cls}">${escapeHtml(d.message)}</div><div class="out-line"> </div>`;
+  } catch(e) {
+    out.lastElementChild.innerHTML = `$ ${svc}.${cmd} ${args.join(' ')}`;
+    out.innerHTML += `<div class="out-line out-err">Error: ${escapeHtml(e.message)}</div>`;
+  }
+  out.scrollTop = out.scrollHeight;
+}
+
+// Dashboard data loading
+async function loadBlockDevices() {
+  const tbody = document.querySelector('#block-table tbody');
+  tbody.innerHTML = '<tr><td colspan="3" class="empty"><span class="spinner"></span>Loading...</td></tr>';
+
+  try {
+    const r = await fetch('/api/blocks');
+    const d = await r.json();
+
+    // Parse the JSON response (could be object or plain text)
+    if (d) {
+      let rows = [];
+      if (typeof d === 'object' && !Array.isArray(d)) {
+        // If it's a NamedMap object
+        rows = Object.entries(d).map(([name, info]) => {
+          return `<tr><td>${name}</td><td>${info.size || '-'}</td><td>${info.type || '-'}</td></tr>`;
+        });
+      } else if (d.data && typeof d.data === 'string') {
+        // If wrapped in data field as text
+        const lines = d.data.trim().split('\n').filter(l => l.length > 0);
+        rows = lines.map(line => {
+          const parts = line.split(/\s+/);
+          return `<tr><td>${parts[0] || '-'}</td><td>${parts[1] || '-'}</td><td>${parts[2] || '-'}</td></tr>`;
+        });
+      }
+
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="empty">No block devices found</td></tr>';
+      } else {
+        tbody.innerHTML = rows.join('');
+      }
+    } else {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty">No block devices found</td></tr>';
+    }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="3" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function loadPools() {
+  const tbody = document.querySelector('#pool-table tbody');
+  tbody.innerHTML = '<tr><td colspan="3" class="empty"><span class="spinner"></span>Loading...</td></tr>';
+
+  try {
+    const r = await fetch('/api/pools');
+    const d = await r.json();
+
+    // Parse the JSON response (could be object or plain text)
+    if (d) {
+      let rows = [];
+      if (typeof d === 'object' && !Array.isArray(d)) {
+        // If it's a NamedMap object
+        rows = Object.entries(d).map(([name, info]) => {
+          return `<tr><td>${name}</td><td>${info.health || info.status || '-'}</td><td>${info.size || info.capacity || '-'}</td></tr>`;
+        });
+      } else if (d.data && typeof d.data === 'string') {
+        // If wrapped in data field as text
+        const lines = d.data.trim().split('\n').filter(l => l.length > 0);
+        rows = lines.map(line => {
+          const parts = line.split(/\s+/);
+          return `<tr><td>${parts[0] || '-'}</td><td>${parts[1] || '-'}</td><td>${parts[2] || '-'}</td></tr>`;
+        });
+      }
+
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="empty">No pools found</td></tr>';
+      } else {
+        tbody.innerHTML = rows.join('');
+      }
+    } else {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty">No pools found</td></tr>';
+    }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="3" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function loadVolumes() {
+  const tbody = document.querySelector('#volume-table tbody');
+  tbody.innerHTML = '<tr><td colspan="3" class="empty"><span class="spinner"></span>Loading...</td></tr>';
+
+  try {
+    const r = await fetch('/api/volumes');
+    const d = await r.json();
+
+    // Parse the JSON response (could be object or plain text)
+    if (d) {
+      let rows = [];
+      if (typeof d === 'object' && !Array.isArray(d)) {
+        // If it's a NamedMap object
+        rows = Object.entries(d).map(([name, info]) => {
+          return `<tr><td>${name}</td><td>${info.used || info.size || '-'}</td><td>${info.pool || '-'}</td></tr>`;
+        });
+      } else if (d.data && typeof d.data === 'string') {
+        // If wrapped in data field as text
+        const lines = d.data.trim().split('\n').filter(l => l.length > 0);
+        rows = lines.map(line => {
+          const parts = line.split(/\s+/);
+          return `<tr><td>${parts[0] || '-'}</td><td>${parts[1] || '-'}</td><td>${parts[2] || '-'}</td></tr>`;
+        });
+      }
+
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="empty">No volumes found</td></tr>';
+      } else {
+        tbody.innerHTML = rows.join('');
+      }
+    } else {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty">No volumes found</td></tr>';
+    }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="3" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function loadNetwork() {
+  const tbody = document.querySelector('#network-table tbody');
+  tbody.innerHTML = '<tr><td colspan="3" class="empty"><span class="spinner"></span>Loading...</td></tr>';
+
+  try {
+    const r = await fetch('/api/execute', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({service: 'network', command: 'list', args: []})
+    });
+    const d = await r.json();
+
+    if (d.success && d.message) {
+      const lines = d.message.trim().split('\n').filter(l => l.length > 0);
+      if (lines.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="empty">No network interfaces found</td></tr>';
+      } else {
+        tbody.innerHTML = lines.map(line => {
+          const parts = line.split(/\s+/);
+          return `<tr><td>${parts[0] || '-'}</td><td>${parts[1] || '-'}</td><td>${parts[2] || '-'}</td></tr>`;
+        }).join('');
+      }
+    } else {
+      tbody.innerHTML = `<tr><td colspan="3" class="error">${escapeHtml(d.message || 'Failed to load')}</td></tr>`;
+    }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="3" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+// Wizard functions
+async function openWizard() {
+  wizardData = { disks: [], raid: '', name: '' };
+  document.getElementById('wizard-modal').classList.add('active');
+  showWizardStep(1);
+
+  // Load disks
+  try {
+    const r = await fetch('/api/blocks');
+    const d = await r.json();
+
+    const diskList = document.getElementById('disk-list');
+    let disks = [];
+
+    // Parse the JSON response (could be object or plain text)
+    if (d) {
+      if (typeof d === 'object' && !Array.isArray(d) && !d.data) {
+        // If it's a NamedMap object
+        disks = Object.entries(d).map(([name, info]) => ({
+          name,
+          size: info.size || 'Unknown'
+        }));
+      } else if (d.data && typeof d.data === 'string') {
+        // If wrapped in data field as text
+        const lines = d.data.trim().split('\n').filter(l => l.length > 0);
+        disks = lines.map((line, i) => {
+          const parts = line.split(/\s+/);
+          return {
+            name: parts[0] || `disk${i}`,
+            size: parts[1] || 'Unknown'
+          };
+        });
+      }
+    }
+
+    if (disks.length > 0) {
+      diskList.innerHTML = disks.map(disk => `<label class="disk-item">
+        <input type="checkbox" value="${disk.name}" onchange="toggleDisk('${disk.name}')">
+        <div class="disk-info">
+          <div class="disk-name">${disk.name}</div>
+          <div class="disk-size">${disk.size}</div>
+        </div>
+      </label>`).join('');
+    } else {
+      diskList.innerHTML = '<div class="empty">No available disks found</div>';
+    }
+  } catch(e) {
+    console.error('Failed to load disks:', e);
+    document.getElementById('disk-list').innerHTML = `<div class="error">Failed to load disks: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function closeWizard() {
+  document.getElementById('wizard-modal').classList.remove('active');
+}
+
+function showWizardStep(step) {
+  document.querySelectorAll('.wizard-step').forEach(s => s.classList.remove('active'));
+  document.getElementById(`wizard-step-${step}`).classList.add('active');
+}
+
+function wizardNext(step) {
+  showWizardStep(step);
+}
+
+function wizardPrev(step) {
+  showWizardStep(step);
+}
+
+function toggleDisk(name) {
+  const idx = wizardData.disks.indexOf(name);
+  if (idx === -1) {
+    wizardData.disks.push(name);
+  } else {
+    wizardData.disks.splice(idx, 1);
+  }
+}
+
+function selectRaid(type) {
+  wizardData.raid = type;
+  document.querySelectorAll('.raid-option').forEach(o => o.classList.remove('selected'));
+  document.querySelector(`[data-raid="${type}"]`).classList.add('selected');
+}
+
+async function createPool() {
+  const name = document.getElementById('pool-name-input').value.trim();
+  if (!name) {
+    alert('Please enter a pool name');
+    return;
+  }
+  if (wizardData.disks.length === 0) {
+    alert('Please select at least one disk');
+    return;
+  }
+  if (!wizardData.raid) {
+    alert('Please select a RAID type');
+    return;
+  }
+
+  wizardData.name = name;
+
+  closeWizard();
+
+  try {
+    const r = await fetch('/api/pools', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: name,
+        raid_type: wizardData.raid,
+        devices: wizardData.disks
+      })
+    });
+    const d = await r.json();
+
+    if (d.success || r.status === 201) {
+      alert(`Pool "${name}" created successfully!`);
+      // Refresh dashboard
+      loadPools();
+      showDashboard();
+    } else {
+      alert('Failed to create pool: ' + (d.error || d.message || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Error creating pool: ' + e.message);
+  }
+}
+
+function clearOutput() {
+  document.getElementById('output').innerHTML = '';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// User management functions
+async function loadUsers() {
+  const tbody = document.querySelector('#users-table tbody');
+  tbody.innerHTML = '<tr><td colspan="4" class="empty"><span class="spinner"></span>Loading...</td></tr>';
+
+  try {
+    const r = await fetch('/api/users');
+    const d = await r.json();
+
+    if (d.users && d.users.length > 0) {
+      tbody.innerHTML = d.users.map(u => `
+        <tr>
+          <td>${escapeHtml(u.username)}</td>
+          <td>${u.uid}</td>
+          <td>${escapeHtml(u.comment)}</td>
+          <td>
+            <button class="action-btn" onclick="showPasswordForm('${escapeHtml(u.username)}')">Change Password</button>
+            ${u.username !== 'root' ? `<button class="action-btn danger" onclick="deleteUser('${escapeHtml(u.username)}')">Delete</button>` : ''}
+          </td>
+        </tr>
+        <tr class="passwd-row" id="passwd-row-${escapeHtml(u.username)}">
+          <td colspan="4">
+            <div class="passwd-form">
+              <input type="password" id="passwd-input-${escapeHtml(u.username)}" placeholder="New password" style="flex: 1; padding: 6px 10px; background: #0f1117; border: 1px solid #374151; border-radius: 4px; color: #e2e8f0;">
+              <button class="action-btn" onclick="changePassword('${escapeHtml(u.username)}')">Save</button>
+              <button class="action-btn" onclick="hidePasswordForm('${escapeHtml(u.username)}')">Cancel</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty">No users found</td></tr>';
+    }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="4" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function addUser(event) {
+  event.preventDefault();
+  const form = event.target;
+  const data = {
+    username: form.username.value,
+    password: form.password.value,
+    comment: form.comment.value || ''
+  };
+
+  try {
+    const r = await fetch('/api/users', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+
+    if (r.ok) {
+      form.reset();
+      loadUsers();
+    } else {
+      const d = await r.json();
+      alert('Failed to add user: ' + (d.error || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+async function deleteUser(username) {
+  if (!confirm(`Are you sure you want to delete user "${username}"?`)) return;
+
+  try {
+    const r = await fetch(`/api/users/${encodeURIComponent(username)}`, {
+      method: 'DELETE'
+    });
+
+    if (r.ok) {
+      loadUsers();
+    } else {
+      const d = await r.json();
+      alert('Failed to delete user: ' + (d.error || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+function showPasswordForm(username) {
+  document.querySelectorAll('.passwd-row').forEach(row => row.classList.remove('show'));
+  document.getElementById(`passwd-row-${username}`).classList.add('show');
+}
+
+function hidePasswordForm(username) {
+  document.getElementById(`passwd-row-${username}`).classList.remove('show');
+  document.getElementById(`passwd-input-${username}`).value = '';
+}
+
+async function changePassword(username) {
+  const input = document.getElementById(`passwd-input-${username}`);
+  const password = input.value;
+
+  if (!password) {
+    alert('Please enter a password');
+    return;
+  }
+
+  try {
+    const r = await fetch(`/api/users/${encodeURIComponent(username)}/passwd`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password})
+    });
+
+    if (r.ok) {
+      hidePasswordForm(username);
+      alert('Password changed successfully');
+    } else {
+      const d = await r.json();
+      alert('Failed to change password: ' + (d.error || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// Pools view functions
+function showPoolsView() {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('page-title').textContent = 'Storage Pools';
+  document.getElementById('page-desc').textContent = 'Manage storage pools';
+  document.getElementById('dashboard').classList.remove('active');
+  document.getElementById('service-view').classList.remove('active');
+  document.getElementById('users-view').classList.remove('active');
+  document.getElementById('pools-view').classList.add('active');
+  document.getElementById('blocks-view').classList.remove('active');
+  document.getElementById('volumes-view').classList.remove('active');
+
+  loadPoolsTable();
+}
+
+async function loadPoolsTable() {
+  const tbody = document.querySelector('#pools-table tbody');
+  tbody.innerHTML = '<tr><td colspan="4" class="empty"><span class="spinner"></span>Loading...</td></tr>';
+
+  try {
+    const r = await fetch('/api/pools');
+    const d = await r.json();
+
+    if (d) {
+      let rows = [];
+      if (typeof d === 'object' && !Array.isArray(d) && !d.data) {
+        // If it's a NamedMap object
+        rows = Object.entries(d).map(([name, info]) => {
+          return `<tr>
+            <td>${name}</td>
+            <td>${info.health || info.status || '-'}</td>
+            <td>${info.size || info.capacity || '-'}</td>
+            <td><button class="action-btn danger" onclick="deletePoolConfirm('${name}')">Destroy</button></td>
+          </tr>`;
+        });
+      } else if (d.data && typeof d.data === 'string') {
+        // If wrapped in data field as text
+        const lines = d.data.trim().split('\n').filter(l => l.length > 0);
+        rows = lines.map(line => {
+          const parts = line.split(/\s+/);
+          const name = parts[0] || '-';
+          return `<tr>
+            <td>${name}</td>
+            <td>${parts[1] || '-'}</td>
+            <td>${parts[2] || '-'}</td>
+            <td><button class="action-btn danger" onclick="deletePoolConfirm('${name}')">Destroy</button></td>
+          </tr>`;
+        });
+      }
+
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty">No pools found</td></tr>';
+      } else {
+        tbody.innerHTML = rows.join('');
+      }
+    } else {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty">No pools found</td></tr>';
+    }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="4" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function deletePoolConfirm(name) {
+  if (!confirm(`Are you sure you want to destroy pool "${name}"? This will delete all data!`)) return;
+
+  try {
+    const r = await fetch(`/api/pools/${encodeURIComponent(name)}`, {
+      method: 'DELETE'
+    });
+    const d = await r.json();
+
+    if (d.success || r.ok) {
+      alert(`Pool "${name}" destroyed successfully`);
+      loadPoolsTable();
+      loadPools(); // Refresh dashboard too
+    } else {
+      alert('Failed to destroy pool: ' + (d.error || d.message || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Error destroying pool: ' + e.message);
+  }
+}
+
+// Blocks view functions
+function showBlocksView() {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('page-title').textContent = 'Block Devices';
+  document.getElementById('page-desc').textContent = 'View available block devices';
+  document.getElementById('dashboard').classList.remove('active');
+  document.getElementById('service-view').classList.remove('active');
+  document.getElementById('users-view').classList.remove('active');
+  document.getElementById('pools-view').classList.remove('active');
+  document.getElementById('blocks-view').classList.add('active');
+  document.getElementById('volumes-view').classList.remove('active');
+
+  loadBlocksTable();
+}
+
+async function loadBlocksTable() {
+  const tbody = document.querySelector('#blocks-table tbody');
+  tbody.innerHTML = '<tr><td colspan="4" class="empty"><span class="spinner"></span>Loading...</td></tr>';
+
+  try {
+    const r = await fetch('/api/blocks');
+    const d = await r.json();
+
+    if (d) {
+      let rows = [];
+      if (typeof d === 'object' && !Array.isArray(d) && !d.data) {
+        // If it's a NamedMap object
+        rows = Object.entries(d).map(([name, info]) => {
+          return `<tr>
+            <td>${name}</td>
+            <td>${info.size || '-'}</td>
+            <td>${info.type || '-'}</td>
+            <td>${info.model || '-'}</td>
+          </tr>`;
+        });
+      } else if (d.data && typeof d.data === 'string') {
+        // If wrapped in data field as text
+        const lines = d.data.trim().split('\n').filter(l => l.length > 0);
+        rows = lines.map(line => {
+          const parts = line.split(/\s+/);
+          return `<tr>
+            <td>${parts[0] || '-'}</td>
+            <td>${parts[1] || '-'}</td>
+            <td>${parts[2] || '-'}</td>
+            <td>${parts[3] || '-'}</td>
+          </tr>`;
+        });
+      }
+
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty">No block devices found</td></tr>';
+      } else {
+        tbody.innerHTML = rows.join('');
+      }
+    } else {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty">No block devices found</td></tr>';
+    }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="4" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+// Volumes view functions
+function showVolumesView() {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('page-title').textContent = 'Volumes';
+  document.getElementById('page-desc').textContent = 'Manage volumes';
+  document.getElementById('dashboard').classList.remove('active');
+  document.getElementById('service-view').classList.remove('active');
+  document.getElementById('users-view').classList.remove('active');
+  document.getElementById('pools-view').classList.remove('active');
+  document.getElementById('blocks-view').classList.remove('active');
+  document.getElementById('volumes-view').classList.add('active');
+
+  loadVolumesTable();
+}
+
+async function loadVolumesTable() {
+  const tbody = document.querySelector('#volumes-table tbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="empty"><span class="spinner"></span>Loading...</td></tr>';
+
+  try {
+    const r = await fetch('/api/volumes');
+    const d = await r.json();
+
+    if (d) {
+      let rows = [];
+      if (typeof d === 'object' && !Array.isArray(d) && !d.data) {
+        // If it's a NamedMap object
+        rows = Object.entries(d).map(([name, info]) => {
+          return `<tr>
+            <td>${name}</td>
+            <td>${info.used || info.size || '-'}</td>
+            <td>${info.avail || info.available || '-'}</td>
+            <td>${info.mountpoint || info.mount || '-'}</td>
+            <td><button class="action-btn danger" onclick="deleteVolumeConfirm('${name}')">Delete</button></td>
+          </tr>`;
+        });
+      } else if (d.data && typeof d.data === 'string') {
+        // If wrapped in data field as text
+        const lines = d.data.trim().split('\n').filter(l => l.length > 0);
+        rows = lines.map(line => {
+          const parts = line.split(/\s+/);
+          const name = parts[0] || '-';
+          return `<tr>
+            <td>${name}</td>
+            <td>${parts[1] || '-'}</td>
+            <td>${parts[2] || '-'}</td>
+            <td>${parts[3] || '-'}</td>
+            <td><button class="action-btn danger" onclick="deleteVolumeConfirm('${name}')">Delete</button></td>
+          </tr>`;
+        });
+      }
+
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty">No volumes found</td></tr>';
+      } else {
+        tbody.innerHTML = rows.join('');
+      }
+    } else {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty">No volumes found</td></tr>';
+    }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function openVolumeModal() {
+  document.getElementById('volume-modal').style.display = 'flex';
+
+  // Load pools for dropdown
+  try {
+    const r = await fetch('/api/pools');
+    const d = await r.json();
+
+    const select = document.getElementById('volume-pool-select');
+    select.innerHTML = '<option value="">-- Select a pool --</option>';
+
+    if (d && typeof d === 'object' && !Array.isArray(d) && !d.data) {
+      // If it's a NamedMap object
+      Object.keys(d).forEach(poolName => {
+        select.innerHTML += `<option value="${poolName}">${poolName}</option>`;
+      });
+    } else if (d.data && typeof d.data === 'string') {
+      // If wrapped in data field as text
+      const lines = d.data.trim().split('\n').filter(l => l.length > 0);
+      lines.forEach(line => {
+        const poolName = line.split(/\s+/)[0];
+        if (poolName) {
+          select.innerHTML += `<option value="${poolName}">${poolName}</option>`;
+        }
+      });
+    }
+  } catch(e) {
+    console.error('Failed to load pools:', e);
+  }
+}
+
+function closeVolumeModal() {
+  document.getElementById('volume-modal').style.display = 'none';
+  document.getElementById('volume-name-input').value = '';
+  document.getElementById('volume-pool-select').value = '';
+}
+
+async function createVolume() {
+  const name = document.getElementById('volume-name-input').value.trim();
+  const pool = document.getElementById('volume-pool-select').value;
+
+  if (!name) {
+    alert('Please enter a volume name');
+    return;
+  }
+  if (!pool) {
+    alert('Please select a pool');
+    return;
+  }
+
+  closeVolumeModal();
+
+  try {
+    const r = await fetch('/api/volumes', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name, pool })
+    });
+    const d = await r.json();
+
+    if (d.success || r.status === 201) {
+      alert(`Volume "${name}" created successfully!`);
+      loadVolumesTable();
+      loadVolumes(); // Refresh dashboard too
+    } else {
+      alert('Failed to create volume: ' + (d.error || d.message || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Error creating volume: ' + e.message);
+  }
+}
+
+async function deleteVolumeConfirm(dataset) {
+  if (!confirm(`Are you sure you want to delete volume "${dataset}"?`)) return;
+
+  try {
+    const r = await fetch(`/api/volumes/${encodeURIComponent(dataset)}`, {
+      method: 'DELETE'
+    });
+    const d = await r.json();
+
+    if (d.success || r.ok) {
+      alert(`Volume "${dataset}" deleted successfully`);
+      loadVolumesTable();
+      loadVolumes(); // Refresh dashboard too
+    } else {
+      alert('Failed to delete volume: ' + (d.error || d.message || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Error deleting volume: ' + e.message);
+  }
+}
+
+// Initialize
+loadServices();
+</script>
+</body>
+</html>
