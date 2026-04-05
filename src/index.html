@@ -381,9 +381,30 @@
         </div>
         <div class="card-body">
           <table class="card-table" id="network-view-table">
-            <thead><tr><th>Interface</th><th>State</th><th>MAC</th><th>IPv4</th><th>RX</th><th>TX</th></tr></thead>
+            <thead><tr><th>Interface</th><th>State</th><th>MAC</th><th>IPv4</th><th>Gateway</th><th>RX</th><th>TX</th><th>Actions</th></tr></thead>
             <tbody></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+    <!-- Set IP Modal -->
+    <div id="setip-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
+      <div class="wizard-content" style="max-width: 400px;">
+        <div class="wizard-header">
+          <div class="wizard-title">Set IP — <span id="setip-iface"></span></div>
+          <button class="close-btn" onclick="closeSetIpModal()">&times;</button>
+        </div>
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 6px;">IP Address (CIDR)</label>
+          <input type="text" id="setip-cidr" class="wizard-input" placeholder="e.g. 192.168.1.100/24" />
+        </div>
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 6px;">Default Gateway</label>
+          <input type="text" id="setip-gateway" class="wizard-input" placeholder="e.g. 192.168.1.1" />
+        </div>
+        <div class="wizard-actions">
+          <button class="wizard-btn-secondary" onclick="closeSetIpModal()">Cancel</button>
+          <button class="wizard-btn-primary" onclick="applySetIp()">Apply</button>
         </div>
       </div>
     </div>
@@ -1417,7 +1438,7 @@ async function loadNetworkView() {
       const ifaces = JSON.parse(d.message);
       const entries = Object.entries(ifaces);
       if (entries.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty">No network interfaces found</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">No network interfaces found</td></tr>';
       } else {
         tbody.innerHTML = entries.map(([name, info]) =>
           `<tr>
@@ -1425,16 +1446,18 @@ async function loadNetworkView() {
             <td><span style="color: ${info.state === 'UP' ? '#34d399' : '#94a3b8'}">${escapeHtml(info.state)}</span></td>
             <td style="font-size: 12px; color: #64748b;">${escapeHtml(info.mac)}</td>
             <td>${escapeHtml(info.ipv4 || '-')}</td>
+            <td>${escapeHtml(info.gateway || '-')}</td>
             <td style="font-size: 12px;">${formatBytes(info.rx_bytes)}</td>
             <td style="font-size: 12px;">${formatBytes(info.tx_bytes)}</td>
+            <td><button class="action-btn" onclick="openSetIpModal('${escapeHtml(name)}', '${escapeHtml(info.ipv4 || '')}', '${escapeHtml(info.gateway || '')}')">Set IP</button></td>
           </tr>`
         ).join('');
       }
     } else {
-      tbody.innerHTML = `<tr><td colspan="6" class="error">${escapeHtml(d.message || 'Failed')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="error">${escapeHtml(d.message || 'Failed')}</td></tr>`;
     }
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="6" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
   }
 }
 
@@ -1449,6 +1472,49 @@ async function setHostname() {
     const d = await r.json();
     if (d.success) {
       await showAlert('Success', `Hostname set to "${name}"`);
+    } else {
+      await showAlert('Error', d.message || 'Failed');
+    }
+  } catch(e) {
+    await showAlert('Error', e.message);
+  }
+}
+
+// ── Set IP Modal ──
+
+let setIpIface = '';
+
+function openSetIpModal(iface, currentCidr, currentGw) {
+  setIpIface = iface;
+  document.getElementById('setip-iface').textContent = iface;
+  document.getElementById('setip-cidr').value = currentCidr;
+  document.getElementById('setip-gateway').value = currentGw;
+  document.getElementById('setip-modal').style.display = 'flex';
+}
+
+function closeSetIpModal() {
+  document.getElementById('setip-modal').style.display = 'none';
+  setIpIface = '';
+}
+
+async function applySetIp() {
+  const iface = setIpIface;
+  const cidr = document.getElementById('setip-cidr').value.trim();
+  const gateway = document.getElementById('setip-gateway').value.trim();
+  if (!cidr) { await showAlert('Error', 'Please enter an IP address in CIDR format'); return; }
+  if (!gateway) { await showAlert('Error', 'Please enter a default gateway'); return; }
+
+  closeSetIpModal();
+
+  try {
+    const r = await fetch('/api/execute', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({service: 'network', command: 'setip', args: [iface, cidr, gateway]})
+    });
+    const d = await r.json();
+    if (d.success) {
+      await showAlert('Success', d.message);
+      loadNetworkView();
     } else {
       await showAlert('Error', d.message || 'Failed');
     }
