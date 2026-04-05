@@ -146,6 +146,14 @@
         const form = document.getElementById('loginForm');
         const errorDiv = document.getElementById('error');
 
+        // Enter 鍵觸發表單送出
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                form.requestSubmit();
+            }
+        });
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             errorDiv.classList.remove('show');

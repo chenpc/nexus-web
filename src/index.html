@@ -50,8 +50,8 @@
   #users-view.active { display: block; }
 
   /* Pools/Blocks/Volumes Views */
-  #pools-view, #blocks-view, #volumes-view { flex: 1; padding: 24px; overflow-y: auto; display: none; }
-  #pools-view.active, #blocks-view.active, #volumes-view.active { display: block; }
+  #pools-view, #blocks-view, #volumes-view, #network-view { flex: 1; padding: 24px; overflow-y: auto; display: none; }
+  #pools-view.active, #blocks-view.active, #volumes-view.active, #network-view.active { display: block; }
   .user-form { background: #1a1d2e; border: 1px solid #2d3148; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
   .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px; }
   .form-field label { display: block; font-size: 12px; color: #64748b; margin-bottom: 6px; }
@@ -138,14 +138,17 @@
 </head>
 <body>
 
-<div id="sidebar">
+<div id="sidebar" style="display: flex; flex-direction: column;">
   <h1>⚡ Nexus</h1>
   <button class="nav-btn active" onclick="showDashboard()">Dashboard</button>
   <button class="nav-btn" onclick="showPoolsView()">Pools</button>
   <button class="nav-btn" onclick="showBlocksView()">Blocks</button>
   <button class="nav-btn" onclick="showVolumesView()">Volumes</button>
-  <div id="service-list"></div>
   <button class="nav-btn" onclick="showUsers()">Users</button>
+  <button class="nav-btn" onclick="showNetworkView()">Network</button>
+  <div style="flex: 1;"></div>
+  <button class="nav-btn" onclick="toggleApiList()" id="api-toggle">▸ API</button>
+  <div id="service-list" style="display: none; padding-left: 12px;"></div>
 </div>
 
 <div id="main">
@@ -160,6 +163,45 @@
   <div id="content">
     <!-- Dashboard View -->
     <div id="dashboard" class="active">
+      <!-- System Status with History Charts -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 20px;">
+        <div class="card" style="padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+            <div>
+              <span style="font-size: 12px; color: #64748b;">CPU</span>
+              <span style="font-size: 20px; font-weight: 700; color: #a78bfa; margin-left: 8px;" id="sys-cpu">—</span>
+            </div>
+            <div style="font-size: 11px; color: #475569;" id="sys-load">—</div>
+          </div>
+          <canvas id="chart-cpu" height="60" style="width: 100%;"></canvas>
+        </div>
+        <div class="card" style="padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+            <div>
+              <span style="font-size: 12px; color: #64748b;">Memory</span>
+              <span style="font-size: 20px; font-weight: 700; color: #34d399; margin-left: 8px;" id="sys-mem">—</span>
+            </div>
+            <div style="font-size: 11px; color: #475569;" id="sys-mem-detail">—</div>
+          </div>
+          <canvas id="chart-mem" height="60" style="width: 100%;"></canvas>
+        </div>
+        <div class="card" style="padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+            <div>
+              <span style="font-size: 12px; color: #64748b;">Network</span>
+              <span style="font-size: 14px; font-weight: 600; color: #60a5fa; margin-left: 8px;" id="sys-net">—</span>
+            </div>
+            <div style="font-size: 11px; color: #475569;" id="sys-net-detail">—</div>
+          </div>
+          <canvas id="chart-net" height="60" style="width: 100%;"></canvas>
+        </div>
+        <div class="card" style="padding: 16px;">
+          <div style="font-size: 12px; color: #64748b; margin-bottom: 6px;">System</div>
+          <div style="font-size: 16px; font-weight: 600; color: #e2e8f0;" id="sys-hostname">—</div>
+          <div style="font-size: 11px; color: #475569; margin-top: 6px;" id="sys-uptime">Uptime: —</div>
+        </div>
+      </div>
+
       <div class="dashboard-grid">
         <div class="card">
           <div class="card-header">
@@ -316,6 +358,35 @@
         </div>
       </div>
     </div>
+    <!-- Network View -->
+    <div id="network-view">
+      <!-- Hostname -->
+      <div class="card" style="margin-bottom: 16px;">
+        <div class="card-header">
+          <div class="card-title">Hostname</div>
+        </div>
+        <div class="card-body">
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="text" id="hostname-input" class="wizard-input" style="flex: 1; max-width: 300px;" placeholder="hostname" />
+            <button class="form-submit" onclick="setHostname()">Set Hostname</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interfaces -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Network Interfaces</div>
+          <button class="refresh-btn" onclick="loadNetworkView()">↻ Refresh</button>
+        </div>
+        <div class="card-body">
+          <table class="card-table" id="network-view-table">
+            <thead><tr><th>Interface</th><th>State</th><th>MAC</th><th>IPv4</th><th>RX</th><th>TX</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -367,6 +438,52 @@
   </div>
 </div>
 
+<!-- Confirm Modal (replaces browser confirm/alert) -->
+<div id="confirm-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
+  <div class="wizard-content" style="max-width: 400px;">
+    <div class="wizard-header">
+      <div class="wizard-title" id="confirm-title">Confirm</div>
+      <button class="close-btn" onclick="resolveConfirm(false)">&times;</button>
+    </div>
+    <div id="confirm-message" style="font-size: 14px; color: #e2e8f0; margin-bottom: 20px;"></div>
+    <div class="wizard-actions" id="confirm-actions"></div>
+  </div>
+</div>
+
+<!-- Volume Permissions Modal -->
+<div id="perm-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
+  <div class="wizard-content" style="max-width: 500px;">
+    <div class="wizard-header">
+      <div class="wizard-title">Permissions — <span id="perm-dataset"></span></div>
+      <button class="close-btn" onclick="closePermModal()">&times;</button>
+    </div>
+    <div style="margin-bottom: 16px;">
+      <div style="display: flex; gap: 8px; align-items: flex-end;">
+        <div style="flex: 1;">
+          <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 6px;">User</label>
+          <select id="perm-user-select" class="wizard-input" style="cursor: pointer;">
+            <option value="">-- Select user --</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; color: #64748b; margin-bottom: 6px;">Access</label>
+          <select id="perm-access-select" class="wizard-input" style="cursor: pointer; width: 80px;">
+            <option value="rw">RW</option>
+            <option value="ro">RO</option>
+          </select>
+        </div>
+        <button class="wizard-btn-primary" style="padding: 10px 16px; flex-shrink: 0;" onclick="addPermission()">Add</button>
+      </div>
+    </div>
+    <div>
+      <table class="card-table" id="perm-table">
+        <thead><tr><th>User</th><th>Access</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- Create Volume Modal -->
 <div id="volume-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
   <div class="wizard-content">
@@ -413,20 +530,37 @@ async function loadServices() {
 function renderServiceNav() {
   const el = document.getElementById('service-list');
   el.innerHTML = services.map(s =>
-    `<button class="nav-btn" onclick="showService('${s.name}')">${s.name}</button>`
+    `<button class="nav-btn" style="font-size: 13px;" onclick="showService('${s.name}')">${s.name}</button>`
   ).join('');
 }
 
-function showDashboard() {
+function toggleApiList() {
+  const list = document.getElementById('service-list');
+  const toggle = document.getElementById('api-toggle');
+  if (list.style.display === 'none') {
+    list.style.display = 'block';
+    toggle.textContent = '▾ API';
+  } else {
+    list.style.display = 'none';
+    toggle.textContent = '▸ API';
+  }
+}
+
+function hideAllViews() {
+  ['dashboard', 'service-view', 'users-view', 'pools-view', 'blocks-view', 'volumes-view', 'network-view']
+    .forEach(id => document.getElementById(id).classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  stopSysPolling();
+}
+
+function showDashboard() {
+  hideAllViews();
   document.querySelector('.nav-btn').classList.add('active');
   document.getElementById('page-title').textContent = 'Dashboard';
   document.getElementById('page-desc').textContent = 'System Overview';
   document.getElementById('dashboard').classList.add('active');
-  document.getElementById('service-view').classList.remove('active');
-  document.getElementById('users-view').classList.remove('active');
 
-  // Load dashboard data
+  startSysPolling();
   loadBlockDevices();
   loadPools();
   loadVolumes();
@@ -434,12 +568,10 @@ function showDashboard() {
 }
 
 function showUsers() {
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  hideAllViews();
   event.target.classList.add('active');
   document.getElementById('page-title').textContent = 'User Management';
   document.getElementById('page-desc').textContent = 'Manage system users';
-  document.getElementById('dashboard').classList.remove('active');
-  document.getElementById('service-view').classList.remove('active');
   document.getElementById('users-view').classList.add('active');
 
   loadUsers();
@@ -449,14 +581,12 @@ function showService(name) {
   currentService = services.find(s => s.name === name);
   if (!currentService) return;
 
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  hideAllViews();
   event.target.classList.add('active');
 
   document.getElementById('page-title').textContent = name;
   document.getElementById('page-desc').textContent = currentService.description || '';
-  document.getElementById('dashboard').classList.remove('active');
   document.getElementById('service-view').classList.add('active');
-  document.getElementById('users-view').classList.remove('active');
 
   renderCommands();
 }
@@ -641,14 +771,14 @@ async function loadNetwork() {
     const d = await r.json();
 
     if (d.success && d.message) {
-      const lines = d.message.trim().split('\n').filter(l => l.length > 0);
-      if (lines.length === 0) {
+      const ifaces = JSON.parse(d.message);
+      const entries = Object.entries(ifaces);
+      if (entries.length === 0) {
         tbody.innerHTML = '<tr><td colspan="3" class="empty">No network interfaces found</td></tr>';
       } else {
-        tbody.innerHTML = lines.map(line => {
-          const parts = line.split(/\s+/);
-          return `<tr><td>${parts[0] || '-'}</td><td>${parts[1] || '-'}</td><td>${parts[2] || '-'}</td></tr>`;
-        }).join('');
+        tbody.innerHTML = entries.map(([name, info]) =>
+          `<tr><td>${escapeHtml(name)}</td><td>${escapeHtml(info.state)}</td><td>${escapeHtml(info.ipv4 || info.ipv6 || '-')}</td></tr>`
+        ).join('');
       }
     } else {
       tbody.innerHTML = `<tr><td colspan="3" class="error">${escapeHtml(d.message || 'Failed to load')}</td></tr>`;
@@ -664,32 +794,74 @@ async function openWizard() {
   document.getElementById('wizard-modal').classList.add('active');
   showWizardStep(1);
 
-  // Load disks
+  // Load disks (filter out those already used by pools)
   try {
-    const r = await fetch('/api/blocks');
-    const d = await r.json();
+    // Fetch blocks and used devices in parallel
+    const [blocksResp, usedResp] = await Promise.all([
+      fetch('/api/blocks'),
+      fetch('/api/execute', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({service: 'pool', command: 'list', args: []})
+      }).then(r => r.json()).then(d => {
+        // Get used device names from zpool status
+        return fetch('/api/execute', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({service: 'block', command: 'list', args: []})
+        });
+      }).catch(() => null)
+    ]);
+
+    const d = await blocksResp.json();
+
+    // Find devices used by ZFS pools via lsblk mountpoint
+    // Devices in a pool typically have a non-null mountpoint or show zfs_member FSTYPE
+    // Simpler: query zpool status and extract device names
+    let usedDevices = new Set();
+    try {
+      const statusResp = await fetch('/api/execute', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({service: 'pool', command: 'list', args: []})
+      });
+      const statusData = await statusResp.json();
+      if (statusData.success && statusData.message) {
+        const pools = JSON.parse(statusData.message);
+        // For each pool, get its devices via zpool status
+        for (const poolName of Object.keys(pools)) {
+          const zpoolResp = await fetch('/api/execute', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({service: 'pool', command: 'devices', args: [poolName]})
+          });
+          const zpoolData = await zpoolResp.json();
+          if (zpoolData.success && zpoolData.message) {
+            zpoolData.message.trim().split('\n').forEach(dev => {
+              usedDevices.add(dev.trim().replace('/dev/', ''));
+            });
+          }
+        }
+      }
+    } catch(e) { /* ignore — show all disks if pool query fails */ }
 
     const diskList = document.getElementById('disk-list');
     let disks = [];
 
-    // Parse the JSON response (could be object or plain text)
     if (d) {
       if (typeof d === 'object' && !Array.isArray(d) && !d.data) {
-        // If it's a NamedMap object
-        disks = Object.entries(d).map(([name, info]) => ({
-          name,
-          size: info.size || 'Unknown'
-        }));
+        disks = Object.entries(d)
+          .filter(([name]) => !usedDevices.has(name))
+          .map(([name, info]) => ({
+            name,
+            size: info.size || 'Unknown'
+          }));
       } else if (d.data && typeof d.data === 'string') {
-        // If wrapped in data field as text
         const lines = d.data.trim().split('\n').filter(l => l.length > 0);
         disks = lines.map((line, i) => {
           const parts = line.split(/\s+/);
-          return {
-            name: parts[0] || `disk${i}`,
-            size: parts[1] || 'Unknown'
-          };
-        });
+          return { name: parts[0] || `disk${i}`, size: parts[1] || 'Unknown' };
+        }).filter(d => !usedDevices.has(d.name));
       }
     }
 
@@ -774,7 +946,7 @@ async function createPool() {
     const d = await r.json();
 
     if (d.success || r.status === 201) {
-      alert(`Pool "${name}" created successfully!`);
+      await showAlert('Success', `Pool "${name}" created successfully!`);
       // Refresh dashboard
       loadPools();
       showDashboard();
@@ -861,7 +1033,7 @@ async function addUser(event) {
 }
 
 async function deleteUser(username) {
-  if (!confirm(`Are you sure you want to delete user "${username}"?`)) return;
+  if (!await showConfirm('Delete User', `Are you sure you want to delete user "${username}"?`)) return;
 
   try {
     const r = await fetch(`/api/users/${encodeURIComponent(username)}`, {
@@ -907,7 +1079,7 @@ async function changePassword(username) {
 
     if (r.ok) {
       hidePasswordForm(username);
-      alert('Password changed successfully');
+      await showAlert('Success', 'Password changed successfully');
     } else {
       const d = await r.json();
       alert('Failed to change password: ' + (d.error || 'Unknown error'));
@@ -919,16 +1091,11 @@ async function changePassword(username) {
 
 // Pools view functions
 function showPoolsView() {
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  hideAllViews();
   event.target.classList.add('active');
   document.getElementById('page-title').textContent = 'Storage Pools';
   document.getElementById('page-desc').textContent = 'Manage storage pools';
-  document.getElementById('dashboard').classList.remove('active');
-  document.getElementById('service-view').classList.remove('active');
-  document.getElementById('users-view').classList.remove('active');
   document.getElementById('pools-view').classList.add('active');
-  document.getElementById('blocks-view').classList.remove('active');
-  document.getElementById('volumes-view').classList.remove('active');
 
   loadPoolsTable();
 }
@@ -982,7 +1149,7 @@ async function loadPoolsTable() {
 }
 
 async function deletePoolConfirm(name) {
-  if (!confirm(`Are you sure you want to destroy pool "${name}"? This will delete all data!`)) return;
+  if (!await showConfirm('Destroy Pool', `Are you sure you want to destroy pool "${name}"? This will delete all data!`)) return;
 
   try {
     const r = await fetch(`/api/pools/${encodeURIComponent(name)}`, {
@@ -991,7 +1158,7 @@ async function deletePoolConfirm(name) {
     const d = await r.json();
 
     if (d.success || r.ok) {
-      alert(`Pool "${name}" destroyed successfully`);
+      await showAlert('Success', `Pool "${name}" destroyed successfully`);
       loadPoolsTable();
       loadPools(); // Refresh dashboard too
     } else {
@@ -1004,16 +1171,11 @@ async function deletePoolConfirm(name) {
 
 // Blocks view functions
 function showBlocksView() {
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  hideAllViews();
   event.target.classList.add('active');
   document.getElementById('page-title').textContent = 'Block Devices';
   document.getElementById('page-desc').textContent = 'View available block devices';
-  document.getElementById('dashboard').classList.remove('active');
-  document.getElementById('service-view').classList.remove('active');
-  document.getElementById('users-view').classList.remove('active');
-  document.getElementById('pools-view').classList.remove('active');
   document.getElementById('blocks-view').classList.add('active');
-  document.getElementById('volumes-view').classList.remove('active');
 
   loadBlocksTable();
 }
@@ -1067,15 +1229,10 @@ async function loadBlocksTable() {
 
 // Volumes view functions
 function showVolumesView() {
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  hideAllViews();
   event.target.classList.add('active');
   document.getElementById('page-title').textContent = 'Volumes';
   document.getElementById('page-desc').textContent = 'Manage volumes';
-  document.getElementById('dashboard').classList.remove('active');
-  document.getElementById('service-view').classList.remove('active');
-  document.getElementById('users-view').classList.remove('active');
-  document.getElementById('pools-view').classList.remove('active');
-  document.getElementById('blocks-view').classList.remove('active');
   document.getElementById('volumes-view').classList.add('active');
 
   loadVolumesTable();
@@ -1099,7 +1256,7 @@ async function loadVolumesTable() {
             <td>${info.used || info.size || '-'}</td>
             <td>${info.avail || info.available || '-'}</td>
             <td>${info.mountpoint || info.mount || '-'}</td>
-            <td><button class="action-btn danger" onclick="deleteVolumeConfirm('${name}')">Delete</button></td>
+            <td><button class="action-btn" onclick="openPermModal('${name}')">Permissions</button><button class="action-btn danger" onclick="deleteVolumeConfirm('${name}')">Delete</button></td>
           </tr>`;
         });
       } else if (d.data && typeof d.data === 'string') {
@@ -1113,7 +1270,7 @@ async function loadVolumesTable() {
             <td>${parts[1] || '-'}</td>
             <td>${parts[2] || '-'}</td>
             <td>${parts[3] || '-'}</td>
-            <td><button class="action-btn danger" onclick="deleteVolumeConfirm('${name}')">Delete</button></td>
+            <td><button class="action-btn" onclick="openPermModal('${name}')">Permissions</button><button class="action-btn danger" onclick="deleteVolumeConfirm('${name}')">Delete</button></td>
           </tr>`;
         });
       }
@@ -1192,7 +1349,7 @@ async function createVolume() {
     const d = await r.json();
 
     if (d.success || r.status === 201) {
-      alert(`Volume "${name}" created successfully!`);
+      await showAlert('Success', `Volume "${name}" created successfully!`);
       loadVolumesTable();
       loadVolumes(); // Refresh dashboard too
     } else {
@@ -1204,7 +1361,7 @@ async function createVolume() {
 }
 
 async function deleteVolumeConfirm(dataset) {
-  if (!confirm(`Are you sure you want to delete volume "${dataset}"?`)) return;
+  if (!await showConfirm('Delete Volume', `Are you sure you want to delete volume "${dataset}"?`)) return;
 
   try {
     const r = await fetch(`/api/volumes/${encodeURIComponent(dataset)}`, {
@@ -1224,8 +1381,370 @@ async function deleteVolumeConfirm(dataset) {
   }
 }
 
+// ── Network View ──
+
+function showNetworkView() {
+  hideAllViews();
+  event.target.classList.add('active');
+  document.getElementById('page-title').textContent = 'Network';
+  document.getElementById('page-desc').textContent = 'Manage network interfaces and hostname';
+  document.getElementById('network-view').classList.add('active');
+  loadNetworkView();
+}
+
+async function loadNetworkView() {
+  // Load hostname
+  try {
+    const r = await fetch('/api/execute', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({service: 'network', command: 'hostname', args: []})
+    });
+    const d = await r.json();
+    if (d.success) document.getElementById('hostname-input').value = d.message;
+  } catch(e) {}
+
+  // Load interfaces
+  const tbody = document.querySelector('#network-view-table tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="empty"><span class="spinner"></span>Loading...</td></tr>';
+
+  try {
+    const r = await fetch('/api/execute', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({service: 'network', command: 'list', args: []})
+    });
+    const d = await r.json();
+    if (d.success && d.message) {
+      const ifaces = JSON.parse(d.message);
+      const entries = Object.entries(ifaces);
+      if (entries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No network interfaces found</td></tr>';
+      } else {
+        tbody.innerHTML = entries.map(([name, info]) =>
+          `<tr>
+            <td>${escapeHtml(name)}</td>
+            <td><span style="color: ${info.state === 'UP' ? '#34d399' : '#94a3b8'}">${escapeHtml(info.state)}</span></td>
+            <td style="font-size: 12px; color: #64748b;">${escapeHtml(info.mac)}</td>
+            <td>${escapeHtml(info.ipv4 || '-')}</td>
+            <td style="font-size: 12px;">${formatBytes(info.rx_bytes)}</td>
+            <td style="font-size: 12px;">${formatBytes(info.tx_bytes)}</td>
+          </tr>`
+        ).join('');
+      }
+    } else {
+      tbody.innerHTML = `<tr><td colspan="6" class="error">${escapeHtml(d.message || 'Failed')}</td></tr>`;
+    }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="6" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function setHostname() {
+  const name = document.getElementById('hostname-input').value.trim();
+  if (!name) return;
+  try {
+    const r = await fetch('/api/execute', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({service: 'network', command: 'set_hostname', args: [name]})
+    });
+    const d = await r.json();
+    if (d.success) {
+      await showAlert('Success', `Hostname set to "${name}"`);
+    } else {
+      await showAlert('Error', d.message || 'Failed');
+    }
+  } catch(e) {
+    await showAlert('Error', e.message);
+  }
+}
+
+// ── Confirm/Alert Modal ──
+
+let confirmResolve = null;
+
+function showConfirm(title, message) {
+  return new Promise(resolve => {
+    confirmResolve = resolve;
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    document.getElementById('confirm-actions').innerHTML = `
+      <button class="wizard-btn-secondary" onclick="resolveConfirm(false)">Cancel</button>
+      <button class="wizard-btn-primary" style="background: #ef4444;" onclick="resolveConfirm(true)">Confirm</button>`;
+    document.getElementById('confirm-modal').style.display = 'flex';
+  });
+}
+
+function showAlert(title, message) {
+  return new Promise(resolve => {
+    confirmResolve = resolve;
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-message').textContent = message;
+    document.getElementById('confirm-actions').innerHTML = `
+      <button class="wizard-btn-primary" onclick="resolveConfirm(true)">OK</button>`;
+    document.getElementById('confirm-modal').style.display = 'flex';
+  });
+}
+
+function resolveConfirm(value) {
+  document.getElementById('confirm-modal').style.display = 'none';
+  if (confirmResolve) { confirmResolve(value); confirmResolve = null; }
+}
+
+// ── Volume Permissions Modal ──
+
+let permDataset = '';
+
+async function openPermModal(dataset) {
+  permDataset = dataset;
+  document.getElementById('perm-dataset').textContent = dataset;
+  document.getElementById('perm-modal').style.display = 'flex';
+
+  // Load user list for dropdown
+  try {
+    const r = await fetch('/api/users');
+    const d = await r.json();
+    const select = document.getElementById('perm-user-select');
+    select.innerHTML = '<option value="">-- Select user --</option>';
+    if (d.users) {
+      d.users.forEach(u => {
+        select.innerHTML += `<option value="${escapeHtml(u.username)}">${escapeHtml(u.username)}</option>`;
+      });
+    }
+  } catch(e) {
+    console.error('Failed to load users:', e);
+  }
+
+  loadPermissions();
+}
+
+function closePermModal() {
+  document.getElementById('perm-modal').style.display = 'none';
+  permDataset = '';
+}
+
+async function loadPermissions() {
+  const tbody = document.querySelector('#perm-table tbody');
+  tbody.innerHTML = '<tr><td colspan="3" class="empty"><span class="spinner"></span>Loading...</td></tr>';
+
+  try {
+    const r = await fetch(`/api/volume-permissions?dataset=${encodeURIComponent(permDataset)}`);
+    const d = await r.json();
+
+    if (d && typeof d === 'object') {
+      const entries = Object.entries(d);
+      if (entries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="empty">No permissions set</td></tr>';
+      } else {
+        tbody.innerHTML = entries.map(([user, info]) => `<tr>
+          <td>${escapeHtml(user)}</td>
+          <td>${escapeHtml(info.access).toUpperCase()}</td>
+          <td><button class="action-btn danger" onclick="revokePermission('${escapeHtml(user)}')">Remove</button></td>
+        </tr>`).join('');
+      }
+    } else {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty">No permissions set</td></tr>';
+    }
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="3" class="error">Error: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+async function addPermission() {
+  const user = document.getElementById('perm-user-select').value;
+  const access = document.getElementById('perm-access-select').value;
+  if (!user) { alert('Please select a user'); return; }
+
+  try {
+    const r = await fetch('/api/volume-permissions', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ dataset: permDataset, user, access })
+    });
+    if (r.ok) {
+      loadPermissions();
+    } else {
+      const d = await r.json();
+      alert('Failed: ' + (d.error || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+async function revokePermission(user) {
+  try {
+    const r = await fetch('/api/volume-permissions', {
+      method: 'DELETE',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ dataset: permDataset, user })
+    });
+    if (r.ok) {
+      loadPermissions();
+    } else {
+      const d = await r.json();
+      alert('Failed: ' + (d.error || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// ── System Status with Polling + History Charts ──
+
+const HISTORY_MAX = 60; // 60 samples × 2s = 2 minutes
+const sysHistory = { cpu: [], mem: [], netRx: [], netTx: [] };
+let lastNetRx = null, lastNetTx = null;
+let sysPollingTimer = null;
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+  return (bytes / 1073741824).toFixed(2) + ' GB';
+}
+
+function formatRate(bytesPerSec) {
+  if (bytesPerSec < 1024) return bytesPerSec.toFixed(0) + ' B/s';
+  if (bytesPerSec < 1048576) return (bytesPerSec / 1024).toFixed(1) + ' KB/s';
+  return (bytesPerSec / 1048576).toFixed(1) + ' MB/s';
+}
+
+function formatUptime(seconds) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function drawChart(canvasId, data, maxVal, color, fillColor) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || data.length === 0) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
+  const h = canvas.height = canvas.offsetHeight * (window.devicePixelRatio || 1);
+  ctx.clearRect(0, 0, w, h);
+
+  // Grid lines
+  ctx.strokeStyle = '#1e2235';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    const y = (h / 4) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  // Data line
+  const max = maxVal || Math.max(...data, 1);
+  const step = w / (HISTORY_MAX - 1);
+  const offset = HISTORY_MAX - data.length;
+
+  ctx.beginPath();
+  ctx.moveTo(offset * step, h - (data[0] / max) * h);
+  for (let i = 1; i < data.length; i++) {
+    ctx.lineTo((offset + i) * step, h - (data[i] / max) * h);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2 * (window.devicePixelRatio || 1);
+  ctx.stroke();
+
+  // Fill
+  ctx.lineTo((offset + data.length - 1) * step, h);
+  ctx.lineTo(offset * step, h);
+  ctx.closePath();
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+
+  // Max label
+  ctx.fillStyle = '#475569';
+  ctx.font = `${10 * (window.devicePixelRatio || 1)}px sans-serif`;
+  if (canvasId === 'chart-net') {
+    ctx.fillText(formatRate(max), 4, 12 * (window.devicePixelRatio || 1));
+  } else {
+    ctx.fillText(max.toFixed(0) + '%', 4, 12 * (window.devicePixelRatio || 1));
+  }
+}
+
+async function pollSystemStatus() {
+  try {
+    const r = await fetch('/api/execute', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({service: 'system', command: 'status', args: []})
+    });
+    const d = await r.json();
+    if (!d.success) return;
+
+    const s = JSON.parse(d.message);
+
+    // CPU
+    const cpuEl = document.getElementById('sys-cpu');
+    cpuEl.textContent = s.cpu.usage_percent + '%';
+    cpuEl.style.color = s.cpu.usage_percent > 80 ? '#f87171' : s.cpu.usage_percent > 50 ? '#fbbf24' : '#a78bfa';
+    document.getElementById('sys-load').textContent =
+      `Load: ${s.cpu.load_1m} / ${s.cpu.load_5m} / ${s.cpu.load_15m} (${s.cpu.cores} cores)`;
+
+    // Memory
+    const memEl = document.getElementById('sys-mem');
+    memEl.textContent = s.memory.usage_percent + '%';
+    memEl.style.color = s.memory.usage_percent > 80 ? '#f87171' : s.memory.usage_percent > 50 ? '#fbbf24' : '#34d399';
+    document.getElementById('sys-mem-detail').textContent =
+      `${s.memory.used_mb} MB / ${s.memory.total_mb} MB`;
+
+    // Network (compute rate from delta)
+    const ifaces = Object.entries(s.network);
+    if (ifaces.length > 0) {
+      const [name, info] = ifaces[0];
+      let rxRate = 0, txRate = 0;
+      if (lastNetRx !== null) {
+        rxRate = Math.max(0, (info.rx_bytes - lastNetRx) / 2); // 2s interval
+        txRate = Math.max(0, (info.tx_bytes - lastNetTx) / 2);
+      }
+      lastNetRx = info.rx_bytes;
+      lastNetTx = info.tx_bytes;
+
+      document.getElementById('sys-net').textContent = name;
+      document.getElementById('sys-net-detail').textContent =
+        `↓ ${formatRate(rxRate)}  ↑ ${formatRate(txRate)}`;
+
+      sysHistory.netRx.push(rxRate);
+      sysHistory.netTx.push(txRate);
+      if (sysHistory.netRx.length > HISTORY_MAX) { sysHistory.netRx.shift(); sysHistory.netTx.shift(); }
+    }
+
+    // System
+    document.getElementById('sys-hostname').textContent = s.hostname || '—';
+    document.getElementById('sys-uptime').textContent = `Uptime: ${formatUptime(s.uptime_seconds)}`;
+
+    // History
+    sysHistory.cpu.push(s.cpu.usage_percent);
+    sysHistory.mem.push(s.memory.usage_percent);
+    if (sysHistory.cpu.length > HISTORY_MAX) { sysHistory.cpu.shift(); sysHistory.mem.shift(); }
+
+    // Draw charts
+    drawChart('chart-cpu', sysHistory.cpu, 100, '#a78bfa', 'rgba(167,139,250,0.15)');
+    drawChart('chart-mem', sysHistory.mem, 100, '#34d399', 'rgba(52,211,153,0.15)');
+    // Network: combine rx+tx, auto-scale
+    const netCombined = sysHistory.netRx.map((rx, i) => rx + (sysHistory.netTx[i] || 0));
+    drawChart('chart-net', netCombined, null, '#60a5fa', 'rgba(96,165,250,0.15)');
+
+  } catch(e) {
+    console.error('Failed to load system status:', e);
+  }
+}
+
+function startSysPolling() {
+  if (sysPollingTimer) return;
+  pollSystemStatus();
+  sysPollingTimer = setInterval(pollSystemStatus, 2000);
+}
+
+function stopSysPolling() {
+  if (sysPollingTimer) { clearInterval(sysPollingTimer); sysPollingTimer = null; }
+}
+
 // Initialize
 loadServices();
+startSysPolling();
 </script>
 </body>
 </html>

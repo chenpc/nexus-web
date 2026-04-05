@@ -23,3 +23,5 @@ rand = "0.8"
 hex = "0.4"
 pwhash = "0.3"
 axum-extra = { version = "0.9", features = ["cookie"] }
+hyper-util = "0.1"
+axum-server = { version = "0.7", features = ["tls-openssl"] }

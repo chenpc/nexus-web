@@ -17,7 +17,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tonic::transport::Channel;
+use hyper_util::rt::TokioIo;
+use tokio::net::UnixStream;
+use tonic::transport::{Channel, Endpoint, Uri};
+use tower::service_fn;
 
 type Client = Arc<Mutex<NexusServiceClient<Channel>>>;
 type SessionStore = Arc<Mutex<HashMap<String, String>>>;
@@ -100,6 +103,24 @@ struct CreatePoolRequest {
 struct CreateVolumeRequest {
     name: String,
     pool: String,
+}
+
+#[derive(Deserialize)]
+struct SetPermissionRequest {
+    dataset: String,
+    user: String,
+    access: String,
+}
+
+#[derive(Deserialize)]
+struct RevokePermissionRequest {
+    dataset: String,
+    user: String,
+}
+
+#[derive(Deserialize)]
+struct PermissionQuery {
+    dataset: String,
 }
 
 async fn list_services(State(state): State<AppState>) -> impl IntoResponse {
@@ -716,6 +737,148 @@ async fn delete_volume(
     }
 }
 
+// GET /api/volume-permissions?dataset=pool/vol
+async fn list_volume_permissions(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<PermissionQuery>,
+) -> impl IntoResponse {
+    let grpc_req = CommandRequest {
+        service: "volume".to_string(),
+        action: "permissions".to_string(),
+        args: vec![q.dataset],
+    };
+    let mut guard = state.client.lock().await;
+    match guard.execute(tonic::Request::new(grpc_req)).await {
+        Ok(resp) => {
+            let r = resp.into_inner();
+            if r.success {
+                match serde_json::from_str::<serde_json::Value>(&r.message) {
+                    Ok(data) => Json(data).into_response(),
+                    Err(_) => Json(serde_json::json!({})).into_response(),
+                }
+            } else {
+                (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": r.message}))).into_response()
+            }
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{}", e)}))).into_response(),
+    }
+}
+
+// POST /api/volume-permissions  {dataset, user, access}
+async fn set_volume_permission(
+    State(state): State<AppState>,
+    Json(req): Json<SetPermissionRequest>,
+) -> impl IntoResponse {
+    let grpc_req = CommandRequest {
+        service: "volume".to_string(),
+        action: "permission".to_string(),
+        args: vec![req.dataset, req.user, req.access],
+    };
+    let mut guard = state.client.lock().await;
+    match guard.execute(tonic::Request::new(grpc_req)).await {
+        Ok(resp) => {
+            let r = resp.into_inner();
+            if r.success {
+                Json(serde_json::json!({"success": true, "message": r.message})).into_response()
+            } else {
+                (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": r.message}))).into_response()
+            }
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{}", e)}))).into_response(),
+    }
+}
+
+// DELETE /api/volume-permissions  {dataset, user}
+async fn revoke_volume_permission(
+    State(state): State<AppState>,
+    Json(req): Json<RevokePermissionRequest>,
+) -> impl IntoResponse {
+    let grpc_req = CommandRequest {
+        service: "volume".to_string(),
+        action: "revoke".to_string(),
+        args: vec![req.dataset, req.user],
+    };
+    let mut guard = state.client.lock().await;
+    match guard.execute(tonic::Request::new(grpc_req)).await {
+        Ok(resp) => {
+            let r = resp.into_inner();
+            if r.success {
+                Json(serde_json::json!({"success": true, "message": r.message})).into_response()
+            } else {
+                (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": r.message}))).into_response()
+            }
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("{}", e)}))).into_response(),
+    }
+}
+
+// POST /api/factory-reset — destroy all pools and delete all non-root users
+async fn factory_reset(State(state): State<AppState>) -> impl IntoResponse {
+    let mut guard = state.client.lock().await;
+    let mut messages = Vec::new();
+
+    // 1. Destroy all pools (which also destroys volumes)
+    let pool_list = guard
+        .execute(tonic::Request::new(CommandRequest {
+            service: "pool".to_string(),
+            action: "list".to_string(),
+            args: vec![],
+        }))
+        .await;
+    if let Ok(resp) = pool_list {
+        let r = resp.into_inner();
+        if r.success {
+            if let Ok(pools) = serde_json::from_str::<serde_json::Value>(&r.message) {
+                if let Some(obj) = pools.as_object() {
+                    for pool_name in obj.keys() {
+                        let _ = guard
+                            .execute(tonic::Request::new(CommandRequest {
+                                service: "pool".to_string(),
+                                action: "destroy".to_string(),
+                                args: vec![pool_name.clone()],
+                            }))
+                            .await;
+                        messages.push(format!("Destroyed pool '{}'", pool_name));
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Delete all non-root users (uid >= 1000)
+    let user_list = guard
+        .execute(tonic::Request::new(CommandRequest {
+            service: "user".to_string(),
+            action: "list".to_string(),
+            args: vec![],
+        }))
+        .await;
+    if let Ok(resp) = user_list {
+        let r = resp.into_inner();
+        if r.success {
+            if let Ok(users) = serde_json::from_str::<serde_json::Value>(&r.message) {
+                if let Some(obj) = users.as_object() {
+                    for (username, info) in obj {
+                        let uid = info["uid"].as_u64().unwrap_or(0);
+                        if uid >= 1000 {
+                            let _ = guard
+                                .execute(tonic::Request::new(CommandRequest {
+                                    service: "user".to_string(),
+                                    action: "delete".to_string(),
+                                    args: vec![username.clone()],
+                                }))
+                                .await;
+                            messages.push(format!("Deleted user '{}'", username));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Json(serde_json::json!({"success": true, "messages": messages})).into_response()
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -726,11 +889,23 @@ async fn main() -> Result<()> {
 
     let grpc_endpoint = std::env::args()
         .nth(2)
-        .unwrap_or_else(|| "http://[::1]:9000".to_string());
+        .unwrap_or_else(|| "/tmp/storage-daemon.sock".to_string());
 
-    let channel = Channel::from_shared(grpc_endpoint.clone())?
-        .connect()
-        .await?;
+    let channel = if grpc_endpoint.starts_with('/') {
+        // Unix domain socket
+        let socket_path = grpc_endpoint.clone();
+        Endpoint::try_from("http://[::]:50051")?
+            .connect_with_connector(service_fn(move |_: Uri| {
+                let path = socket_path.clone();
+                async move { UnixStream::connect(path).await.map(TokioIo::new) }
+            }))
+            .await?
+    } else {
+        // TCP
+        Channel::from_shared(grpc_endpoint.clone())?
+            .connect()
+            .await?
+    };
     let client: Arc<Mutex<NexusServiceClient<Channel>>> =
         Arc::new(Mutex::new(NexusServiceClient::new(channel)));
 
@@ -755,6 +930,10 @@ async fn main() -> Result<()> {
         .route("/api/volumes", get(list_volumes))
         .route("/api/volumes", post(create_volume))
         .route("/api/volumes/:dataset", delete(delete_volume))
+        .route("/api/factory-reset", post(factory_reset))
+        .route("/api/volume-permissions", get(list_volume_permissions))
+        .route("/api/volume-permissions", post(set_volume_permission))
+        .route("/api/volume-permissions", delete(revoke_volume_permission))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
 
     // Public routes (no authentication)
@@ -768,10 +947,51 @@ async fn main() -> Result<()> {
         .merge(public)
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    println!("Nexus Web UI listening on http://{}", addr);
     println!("Connected to gRPC at {}", grpc_endpoint);
 
-    axum::serve(listener, app).await?;
+    // Parse host and port from addr
+    let parts: Vec<&str> = addr.rsplitn(2, ':').collect();
+    let port: u16 = parts[0].parse().unwrap_or(443);
+    let host = parts.get(1).unwrap_or(&"0.0.0.0").to_string();
+
+    // TLS cert generated by systemd ExecStartPre if not exists
+    let cert_path = "/etc/nexus/cert.pem";
+    let key_path = "/etc/nexus/key.pem";
+
+    let tls_config = axum_server::tls_openssl::OpenSSLConfig::from_pem_file(cert_path, key_path)?;
+
+    // HTTP → HTTPS redirect server
+    let https_port = port;
+    let http_port = if port == 443 { 80 } else { port + 1 };
+    let redirect_app = Router::new().fallback(move |req: Request<axum::body::Body>| async move {
+        let host_header = req.headers()
+            .get("host")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("localhost")
+            .to_string();
+        let hostname = host_header.split(':').next().unwrap_or(&host_header);
+        let uri = req.uri().to_string();
+        let redirect_url = if https_port == 443 {
+            format!("https://{}{}", hostname, uri)
+        } else {
+            format!("https://{}:{}{}", hostname, https_port, uri)
+        };
+        Redirect::permanent(&redirect_url)
+    });
+
+    let http_addr: std::net::SocketAddr = format!("{}:{}", host, http_port).parse()?;
+    let https_addr: std::net::SocketAddr = format!("{}:{}", host, port).parse()?;
+
+    println!("Nexus Web UI listening on https://{} (HTTP redirect on port {})", https_addr, http_port);
+
+    tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(http_addr).await.unwrap();
+        axum::serve(listener, redirect_app).await.unwrap();
+    });
+
+    axum_server::bind_openssl(https_addr, tls_config)
+        .serve(app.into_make_service())
+        .await?;
+
     Ok(())
 }
